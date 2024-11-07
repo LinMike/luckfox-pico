@@ -30,7 +30,13 @@ target_include_directories(restapi
     ${JWTCPP_INCLUDE_DIR}
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    /home/mike/workspace/luckfox_ws/luckfox-pico/project/app/ipcweb/ipcweb-backend/ipcweb-env-arm/include
     )
+
+target_link_directories(restapi
+    PUBLIC
+    /home/mike/workspace/luckfox_ws/luckfox-pico/project/app/ipcweb/ipcweb-backend/ipcweb-env-arm/usr/lib
+)
 
 add_executable(entry.cgi
     main.cpp)

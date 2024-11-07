@@ -1,0 +1,75 @@
+###
+ # @Author: mike 948466892@qq.com
+ # @Date: 2024-11-07 13:46:12
+ # @LastEditors: mike 948466892@qq.com
+ # @LastEditTime: 2024-11-07 14:49:59
+ # @FilePath: /ipcweb-backend/ipcweb-env-arm/usr/bin/ap_control
+### 
+
+#!/bin/sh
+
+case $1 in
+    start)
+        # start hostapd
+        killall dnsmasq
+        killall hostapd
+        killall udhcpc
+        # 对于非p2p0的wifi类型，初始化
+        ifconfig wlan1 down
+        rm -rf /data/wlan1
+        iw dev wlan1 del
+        ifconfig wlan0 up
+
+        # 非AP6181 wifi_type,开启热点ap wlan1
+        iw dev wlan0 interface add wlan1 type __ap
+        ifconfig wlan1 up
+        sleep 1
+        ifconfig wlan1 10.201.126.1 netmask 255.255.255.0
+
+        # 在wlan1网口开启dnsmasq
+        dnsmasq -C /data/dnsmasq.conf --interface=wlan1
+        # 在wlan1网口开启hostapd
+        hostapd /data/hostapd.conf &
+
+        # 等待hostapd进程启动
+        wait_times=100
+        # while (( wait_times-- > 0 )) && [[ ! -e /var/run/hostapd ]]; do
+        while [ $wait_times -gt 0 ] && [ ! -e /var/run/hostapd ]; do
+            echo "Waiting..."$wait_times
+            sleep 0.1
+            wait_times=$((wait_times - 1))
+        done
+
+        # 开启配网进程
+        /etc/init.d/S50nginx restart
+        /etc/init.d/S50fcgiwrap restart
+
+        echo "hostapt&dnsmasq Started."
+
+        ;;
+    stop)
+        # 关闭热点ap
+        killall hostapd
+        killall dnsmasq
+        ifconfig wlan1 down
+
+        wait_times=100
+        # while (( wait_times-- > 0 )) && [[ -e /var/run/hostapd ]]; do
+        while [ $wait_times -gt 0 ] && [ -e /var/run/hostapd ]; do
+            echo "Waiting..."$wait_times
+            sleep 0.1
+            wait_times=$((wait_times - 1))
+        done
+
+        # 关闭配网进程
+        /etc/init.d/S50fcgiwrap stop
+        /etc/init.d/S50nginx stop
+
+        echo "hostapd&dnsmasq Stoped."
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+esac
+
+exit $?

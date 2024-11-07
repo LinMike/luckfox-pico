@@ -2,12 +2,12 @@ set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_VERSION 1)
 set(CMAKE_SYSTEM_PROCESSOR arm)
 
-set(BR2_SDK_PATH /work/linux/rk1808/buildroot/output/rockchip_puma/host)
+set(BR2_SDK_PATH /home/mike/workspace/luckfox_ws/luckfox-pico/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/)
 
-set(CMAKE_C_COMPILER   ${BR2_SDK_PATH}/bin/arm-linux-gcc)
-set(CMAKE_CXX_COMPILER ${BR2_SDK_PATH}/bin/arm-linux-g++)
+set(CMAKE_C_COMPILER   ${BR2_SDK_PATH}/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc)
+set(CMAKE_CXX_COMPILER ${BR2_SDK_PATH}/bin/arm-rockchip830-linux-uclibcgnueabihf-g++)
 
-set(BR2_SYSROOT ${BR2_SDK_PATH}/arm-buildroot-linux-gnueabihf/sysroot)
+set(BR2_SYSROOT ${BR2_SDK_PATH}/arm-rockchip830-linux-uclibcgnueabihf/sysroot/)
 set(CMAKE_SYSROOT ${BR2_SYSROOT})
 
 set(ENV{PKG_CONFIG_DIR} "")

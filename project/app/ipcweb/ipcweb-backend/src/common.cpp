@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "common.h"
+#include <regex>
 
 namespace rockchip {
 namespace cgi {
@@ -120,6 +121,65 @@ std::string ipv4_address_get() {
   }
 
   return std::string(ip);
+}
+
+/// @brief 运行命令并将命令执行的结果字符串返回
+/// @param cmd 命令字符串
+/// @return 执行结果的字符串
+std::string execute_command(std::string cmd) {
+  std::array<char, 128> buffer;
+  std::string result;
+
+  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+  if (!pipe) {
+    // throw std::runtime_error("popen() failed.");  编译选项中设置-fno-exceptions
+    printf("popen() failed.\n");
+  }
+
+  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+    result += buffer.data();
+  }
+
+  return result;
+}
+
+// 解析 execCommand 返回的 WiFi 列表
+std::vector<WiFiNetwork> parseWiFiList(const std::string& wifiList) {
+    std::vector<WiFiNetwork> networks;
+    std::istringstream ss(wifiList);
+    std::string line;
+    std::regex regexPattern(R"((?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\s+\d+\s+(-?\d+)\s+\[.*?\]\s+(.*))");
+
+    while (std::getline(ss, line)) {
+        std::smatch match;
+        if (std::regex_search(line, match, regexPattern)) {
+            int signalLevel = std::stoi(match[1].str());
+            std::string ssid = match[2].str();
+
+            // 过滤掉空 SSID 的网络
+            if (!ssid.empty()) {
+                networks.push_back({ssid, signalLevel});
+            }
+        }
+    }
+
+    // 根据信号的强度降序
+    std::sort(networks.begin(), networks.end(), 
+      [](const WiFiNetwork &the, const WiFiNetwork &other) { return the.signalLevel > other.signalLevel; });
+
+    return networks;
+}
+
+// 将网络列表转换为 JSON 格式
+nlohmann::json convertToJson(const std::vector<WiFiNetwork>& networks) {
+    nlohmann::json result;
+    for (const auto& network : networks) {
+        nlohmann::json networkJson;
+        networkJson["ssid"] = network.ssid;
+        networkJson["signal_level"] = network.signalLevel;
+        result.push_back(networkJson);
+    }
+    return result;
 }
 
 #else

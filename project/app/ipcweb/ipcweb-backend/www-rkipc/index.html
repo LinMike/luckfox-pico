@@ -1,21 +1,151 @@
-<!doctype html>
-<html lang="en">
-
+<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <!-- <meta http-equiv="Pragma" content="no-cache"> -->
-  <META HTTP-EQUIV="pragma" CONTENT="no-cache">
-  <META HTTP-EQUIV="Cache-Control" CONTENT="no-cache, must-revalidate">
-  <META HTTP-EQUIV="Cache" CONTENT="no-cache, must-revalidate">
-  <META HTTP-EQUIV="expires" CONTENT="0">
-  <title>IP Camera</title>
-  <base href="/">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
-<link rel="stylesheet" href="styles.7ce364de74ca93e3cffa.css"></head>
-<body>
-  <app-root></app-root>
-<script src="runtime-es2015.0811dcefd377500b5b1a.js" type="module"></script><script src="runtime-es5.0811dcefd377500b5b1a.js" nomodule defer></script><script src="polyfills-es5.277e2e1d6fb2daf91a5c.js" nomodule defer></script><script src="polyfills-es2015.ca64e4516afbb1b890d5.js" type="module"></script><script src="scripts.6ee986b7cd7aefa6baef.js" defer></script><script src="main-es2015.325ceb896438639cd1f7.js" type="module"></script><script src="main-es5.325ceb896438639cd1f7.js" nomodule defer></script></body>
-<script src="assets/wxplayer/wxplayer.js"></script>
+<link rel="stylesheet" href="assets/css/bootstrap.min.css" />
+
+<title>配置WiFi网络</title>
+<script src="assets/js/jQuery.min.js"></script>
+<script>
+
+     // 页面加载时调用
+     document.addEventListener("DOMContentLoaded", () => {
+        load_ssid_list()
+    })
+    
+    const alert = (message, type) => {
+        const wrapper = document.createElement('div')
+        wrapper.innerHTML = [
+            `<div class="alert alert-${type} alert-dismissible" role="alert">`,
+            `   <div>${message}</div>`,
+            '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
+            '</div>'
+        ].join('')
+
+        var liveAlertPlaceholder = document.getElementById('liveAlertPlaceholder')
+        liveAlertPlaceholder.innerHTML = wrapper.innerHTML
+    }
+
+    function load_ssid_list() {
+        // request for ssid list data
+        console.log("从服务器获取wifi ssid列表...")
+        var xhr = new XMLHttpRequest()
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                console.log("获取wifi ssid列表成功. ", xhr.responseText)
+                const options = JSON.parse(xhr.responseText)
+                console.log("options: ", options)
+
+                ssid_elem.innerHTML = ""
+
+                options.data.forEach(element => {
+                    const option = document.createElement("option")
+                    option.value = element["ssid"]
+                    option.innerText = `${element["ssid"]}   ---    (信号强度: ${element["signal_level"]})`
+                    ssid_elem.appendChild(option)
+                });
+            } else {
+                console.log("获取wifi ssid列表失败.", xhr.responseText)
+                ssid_elem.value = "获取数据失败"
+            }
+        }
+        xhr.open('GET', 'cgi-bin/entry.cgi/network/wlan', true)
+        xhr.send()
+
+        var ssid_elem = document.getElementById('ssid')
+        
+        ssid_elem.innerHTML = [
+            '<option value="">',
+            '正在获取数据...',
+            '</option>'
+        ].join('')
+    }
+
+    function connecting() {
+        var passwd = document.getElementById('passwd')
+        var liveAlertPlaceholder = document.getElementById('liveAlertPlaceholder')
+        if (passwd.value.length === 0) {
+            alert("密码不能为空", 'danger')
+            return
+        }
+
+        // var ssid = document.getElementById('ssid')
+        var form = document.getElementById('ssidForm')
+        var formData = new FormData(form)
+
+        var jsonForm = {}
+
+        formData.forEach((value, key) => {
+            jsonForm[key] = value
+        })
+
+        var spinner = document.getElementById('btn_spinner')
+        var btn_connect = document.getElementById('btn_connect')
+        var btn_text = document.getElementById('btn_text')
+        
+        btn_connect.disabled = true;
+        spinner.style.display = 'inline-block';
+        btn_text.innerText = '连接中...'
+
+        var xhr = new XMLHttpRequest()
+
+        xhr.onload = function () {            
+            if (xhr.status === 200) {
+                alert("配置WiFi成功!", 'success')
+                console.log("response: ", xhr.responseText)
+            } else {
+                alert("配置WiFi失败, 请检查异常原因或联系客服!", 'danger')
+            }
+            
+            console.log('重置按钮状态')
+            spinner.style.display = 'none';
+            btn_text.innerText = '连接'
+            btn_connect.disabled = false
+        }
+
+        xhr.onerror = function () {
+            console.log("配网请求发送失败!")
+        }
+        
+        xhr.open('POST', 'cgi-bin/entry.cgi/network/ap_setup', true)
+        xhr.setRequestHeader('Content-Type', 'application/json')
+        xhr.send(JSON.stringify(jsonForm))
+    }
+</script>
+<script src="assets/js/bootstrap.min.js"></script>
+<script src="assets/js/bootstrap.bundle.min.js"></script>
+</head>
+
+<body style="padding-top: 50%;">
+    <!-- <form id="ssidForm" action="/set_ap" method="post"> -->
+    <form id="ssidForm">
+        <div class="form-group">
+            <label for="ssid">选择无线网络: </label>
+            <select type="text" id="ssid" name="ssid" class="form-control">
+                {% for result in scan_results %}
+                <option value="{{result[-1]}}">
+                    {{result[-1]}}&emsp;&emsp;(信号强度: {{result[2]}})
+                </option>
+                {% endfor %}
+            </select>
+            <small id="help" class="form-text text-muted">提示: 选择信号强度大的无线路由器有助于提升使用体验。</small>
+        </div>
+        <div class="form-group">
+            <label for="passwd">密码: </label>
+            <input class="form-control" type="password" id="passwd" name="passwd"/>
+        </div>
+        
+        <div id="liveAlertPlaceholder"></div>
+
+        <div>
+            <button class="btn btn-block btn-primary" type="button" onclick="connecting()" id="btn_connect">
+                <span id="btn_spinner" style="display: none;" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <span id="btn_text">连接</span>
+            </button>
+            <!-- <input class="btn btn-primary btn-block" type="submit" id="conect" name="conect" value="连接" /> -->
+        </div>
+    </form>    
+</body>
 </html>

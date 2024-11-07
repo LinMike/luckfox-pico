@@ -13,7 +13,8 @@ set(DESCRIPTION "IP Camera web backend cgi projects")
 option(IPCWEBBACKEND_BUILD_TESTS  "Build tests executables" OFF)
 option(ENABLE_JWT  "enbale jwt" OFF)
 option(MEDIASERVER_ROCKFACE  "enbale mediaserver rockface" OFF)
-option(USE_RKIPC  "use rkipc" OFF)
+# 在luckfox主板上使用时开启rkipc,否则很多依赖找不到，可能是平台不是buildroot而是android？
+option(USE_RKIPC  "use rkipc" ON)
 
 set(PROJECT_THIRDPARTY_DIR "${CMAKE_SOURCE_DIR}/thirdparty")
 include(clang-format)

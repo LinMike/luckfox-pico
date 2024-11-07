@@ -35,6 +35,17 @@ std::string jwt_token_verify(std::string token, HttpRequest &Req);
 unsigned char FromHex(unsigned char x);
 std::string DecodeURI(std::string &str);
 
+std::string execute_command(std::string cmd);
+
+// 定义 WiFi 网络的结构体
+struct WiFiNetwork {
+    std::string ssid;
+    int signalLevel;
+};
+
+std::vector<WiFiNetwork> parseWiFiList(const std::string& wifiList);
+nlohmann::json convertToJson(const std::vector<WiFiNetwork>& networks);
+
 } // namespace cgi
 } // namespace rockchip
 

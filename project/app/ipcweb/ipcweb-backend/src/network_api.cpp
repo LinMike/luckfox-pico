@@ -5,6 +5,8 @@
 #include "network_api.h"
 #include "common.h"
 #include <time.h>
+#include <thread>
+#include <regex>
 
 namespace rockchip {
 namespace cgi {
@@ -110,7 +112,29 @@ void NetworkApiHandler::handler(const HttpRequest &Req, HttpResponse &Resp) {
     if (!path_specific_resource.compare("lan")) {
       content = network_get_config("eth0");
     } else if (!path_specific_resource.compare("wlan")) {
-      content = network_get_config("wlan0");
+      // 获取wlan0接口的ssid列表
+      content["code"] = 200;
+      content["message"] = "success";
+
+      // 启动wifi扫描
+      std::string scan_result = execute_command("wpa_cli -i wlan0 scan");
+      printf("scan result: %s\n", scan_result.c_str());
+      // 获取扫描结果
+      scan_result = execute_command("wpa_cli -i wlan0 scan_results");
+      printf("scan result2: %s\n", scan_result.c_str());
+
+      // 睡眠一段时间等待系统将扫描的结果写入scan_results,如果等待的时间内还没扫描结束，会返回当前连接的wifi的信息
+      std::this_thread::sleep_for(std::chrono::seconds(3));
+      
+      auto networks = parseWiFiList(scan_result);
+      content["data"] = convertToJson(networks);
+
+      // content["data"] = nlohmann::json::array({{"SVCTX", -35}, {"mike-pc", -30}, {"html-test", -40}});
+      // Resp.setHeader(HttpStatus::kOk, "OK");
+      // Resp.setApiData(content);
+      // return;
+
+      // content = network_get_config("wlan0");
     } else if (!path_specific_resource.compare("wifi")) {
       content = wifi_power_get();
     } else if (!path_specific_resource.compare("wifi-list")) {
@@ -191,6 +215,126 @@ void NetworkApiHandler::handler(const HttpRequest &Req, HttpResponse &Resp) {
       }
       // Update info
       content = network_get_config(interface);
+    } else if (!path_specific_resource.compare("ap_setup")) {
+      // 解析客户端发送的ssid和password数据
+      std::string ssid = cfg_new["ssid"];
+      std::string password = cfg_new["passwd"];
+
+      if (ssid.empty() || password.empty()) {
+        Resp.setErrorResponse(HttpStatus::kForbidden, "ssid or password is empty!!!");
+        return;
+      }
+
+      // 修改配置文件重启wpa_supplicant
+      std::ifstream infile("/data/wpa_supplicant.conf");
+      if (!infile.is_open()) {
+        Resp.setErrorResponse(HttpStatus::kForbidden, "打开wpa配置文件 /data/wpa_supplicant.conf 读取失败!!!");
+        return;
+      }
+
+      std::stringstream buffer;
+      buffer << infile.rdbuf();
+      std::string file_content = buffer.str();
+      infile.close();
+
+      file_content = std::regex_replace(file_content, std::regex(R"(ssid=".*?")"), "ssid=\"" + ssid + "\"");
+      file_content = std::regex_replace(file_content, std::regex(R"(psk=".*?")"), "psk=\"" + password + "\"");
+
+      std::ofstream outfile("/data/wpa_supplicant.conf");
+      if (!outfile.is_open()) {
+        Resp.setErrorResponse(HttpStatus::kForbidden, "打开wpa配置文件 /data/wpa_supplicant.conf 写入失败!!!");
+        return;
+      }
+
+      outfile << file_content;
+      outfile.close();
+
+      // 修改配置文件后重启wpa
+      // 重启后hostpad会失效,无法搜索到ap热点的ssid,但是ps中仍然能看到进程hostapd在运行
+      std::thread reconnect_wifi_thread([]() {
+        // 使用新线程运行重新联网的逻辑，否则wpa重启会影响hostapd导致客户端无法接收到response
+        int retry = 3;
+        std::string result;
+
+        // 关闭进程
+        result = execute_command("killall -9 wpa_supplicant");
+        result = execute_command("killall -9 udhcpc");
+
+        do {
+          result = execute_command("wpa_supplicant -iwlan0 -c /data/wpa_supplicant.conf -B");
+          if (result.find("Successfully initialized wpa_supplicant") != std::string::npos) {
+              break;
+          }
+
+          retry --;
+          std::this_thread::sleep_for(std::chrono::seconds(1)); // 延迟重试
+        } while (retry > 0);
+
+        // 通过wpa_cli -i wlan0 status 获取当前wlan0连接的状态，如果wpa_state=COMPLETED说明wifi已经连接，此时再用udhcpc获取ip
+        // 否则在wpa连接之前运行udhcpc，获取的ip地址仍然是上一个ssid的ip地址，因为此时wifi还没完成切换
+        retry = 5;
+        do {
+          result = execute_command("wpa_cli -iwlan0 status | grep wpa_state | awk -F '=' '{printf $2}'");
+          if (0 == strncmp(result.c_str(), "COMPLETED", 9)) {
+            // wifi已经连接上，可以跳出循环去获取ip
+            break;
+          }
+          // 否则等待5秒再检测是否连接上wifi
+          std::this_thread::sleep_for(std::chrono::seconds(5));
+        } while (retry > 0);
+
+        retry = 3;
+        do {
+          result = execute_command("udhcpc -i wlan0"); // -r 192.168.124.90 指定主机号,执行后可能没有切换？
+          if (result.find("obtained") != std::string::npos || result.find("adding") != std::string::npos) {
+              break;
+          }
+
+          retry --;
+          std::this_thread::sleep_for(std::chrono::seconds(1)); // 延迟重试
+        } while (retry > 0);
+
+        // if (retry == 0) {
+        //   Resp.setErrorResponse(HttpStatus::kForbidden, "重新连接新WiFi失败,可以尝试重新启动pico主板来恢复网络连接.");
+        //   return;
+        // }
+
+        // TODO: 配置成功后关闭热点ap （killall -9 hostapd & killall -9 dnsmasq）
+        result = execute_command("/oem/usr/bin/ap_control stop");
+      });
+      // 分离线程，避免作用域问题
+      reconnect_wifi_thread.detach();
+      
+      // // 配置wifi连接
+      // std::string network_id = execute_command("wpa_cli -i wlan0 add_network");  // network_id="1\n"
+      // if (network_id.empty()) {
+      //   Resp.setErrorResponse(HttpStatus::kForbidden, "添加网络失败!!!");
+      //   return;
+      // }
+
+      // network_id.pop_back();  // 删除结尾的换行符\n
+
+      // // int _id = std::strtol(network_id.c_str(), nullptr, 0);
+      // std::string result = execute_command("wpa_cli -i wlan0 set_network " + network_id + " ssid \"" + ssid + "\"");
+      // result = execute_command("wpa_cli -i wlan0 set_network " + network_id + " psk " + password);
+      // result = execute_command("wpa_cli -i wlan0 enable_network " + network_id);
+      // result = execute_command("wpa_cli -i wlan0 select_network " + network_id);
+
+      // // 设置网络优先级
+      // result = execute_command("wpa_cli -i wlan0 set_network " + network_id + " priority 1");
+      // result = execute_command("wpa_cli -i wlan0 save_config");
+
+      // 返回结果
+      std::string connected_ssid = execute_command("wpa_cli -i wlan0 get_network 0 ssid");
+      // std::string saved_ssid = execute_command("wpa_cli -i wlan0 get_network " + network_id + " ssid");
+
+      content["code"] = 200;
+      content["message"] = "success";
+      content["data"] = {{"connected", connected_ssid}};
+      
+      // test print
+      // content["data"] = {{"network_id", network_id}};
+
     } else if (!path_specific_resource.compare("wifi")) {
       // Set wifi power
       if (!Req.Params.empty()) {
