@@ -112,6 +112,11 @@ void NetworkApiHandler::handler(const HttpRequest &Req, HttpResponse &Resp) {
     if (!path_specific_resource.compare("lan")) {
       content = network_get_config("eth0");
     } else if (!path_specific_resource.compare("wlan")) {
+      //获取列表之前需要先检查wpa_supplicant进程是否开启，可以用pidof wpa_supplicant（未开启返回空字符串）或是否存在/var/run/wpa_supplicant文件判断
+      // 因为如果wpa_supplicant进程未启动，wpa_cli将无法使用，wlan0接口提示No Such File or Directory
+      // 注意：wpa_supplicant -iwlan0 -c/etc/wpa_supplicant.conf -B 启动时确保配置文件中的ssid和psk可以随便填但是不能为空字符串，否则启动失败
+      // ...
+
       // 获取wlan0接口的ssid列表
       content["code"] = 200;
       content["message"] = "success";
@@ -226,9 +231,9 @@ void NetworkApiHandler::handler(const HttpRequest &Req, HttpResponse &Resp) {
       }
 
       // 修改配置文件重启wpa_supplicant
-      std::ifstream infile("/data/wpa_supplicant.conf");
+      std::ifstream infile("/etc/wpa_supplicant.conf");
       if (!infile.is_open()) {
-        Resp.setErrorResponse(HttpStatus::kForbidden, "打开wpa配置文件 /data/wpa_supplicant.conf 读取失败!!!");
+        Resp.setErrorResponse(HttpStatus::kForbidden, "打开wpa配置文件 /etc/wpa_supplicant.conf 读取失败!!!");
         return;
       }
 
@@ -240,9 +245,9 @@ void NetworkApiHandler::handler(const HttpRequest &Req, HttpResponse &Resp) {
       file_content = std::regex_replace(file_content, std::regex(R"(ssid=".*?")"), "ssid=\"" + ssid + "\"");
       file_content = std::regex_replace(file_content, std::regex(R"(psk=".*?")"), "psk=\"" + password + "\"");
 
-      std::ofstream outfile("/data/wpa_supplicant.conf");
+      std::ofstream outfile("/etc/wpa_supplicant.conf");
       if (!outfile.is_open()) {
-        Resp.setErrorResponse(HttpStatus::kForbidden, "打开wpa配置文件 /data/wpa_supplicant.conf 写入失败!!!");
+        Resp.setErrorResponse(HttpStatus::kForbidden, "打开wpa配置文件 /etc/wpa_supplicant.conf 写入失败!!!");
         return;
       }
 
@@ -252,6 +257,10 @@ void NetworkApiHandler::handler(const HttpRequest &Req, HttpResponse &Resp) {
       // 修改配置文件后重启wpa
       // 重启后hostpad会失效,无法搜索到ap热点的ssid,但是ps中仍然能看到进程hostapd在运行
       std::thread reconnect_wifi_thread([]() {
+
+        // 直接重启设备或重启wifi网络
+        // std::this_thread::sleep_for(std::chrono::seconds(1)); // 延迟
+        // execute_command("reboot")
         // 使用新线程运行重新联网的逻辑，否则wpa重启会影响hostapd导致客户端无法接收到response
         int retry = 3;
         std::string result;
@@ -261,7 +270,7 @@ void NetworkApiHandler::handler(const HttpRequest &Req, HttpResponse &Resp) {
         result = execute_command("killall -9 udhcpc");
 
         do {
-          result = execute_command("wpa_supplicant -iwlan0 -c /data/wpa_supplicant.conf -B");
+          result = execute_command("wpa_supplicant -iwlan0 -c /etc/wpa_supplicant.conf -B");
           if (result.find("Successfully initialized wpa_supplicant") != std::string::npos) {
               break;
           }
@@ -299,8 +308,8 @@ void NetworkApiHandler::handler(const HttpRequest &Req, HttpResponse &Resp) {
         //   return;
         // }
 
-        // TODO: 配置成功后关闭热点ap （killall -9 hostapd & killall -9 dnsmasq）
-        result = execute_command("/oem/usr/bin/ap_control stop");
+        // 配置成功后关闭热点ap （killall -9 hostapd & killall -9 dnsmasq）
+        // result = execute_command("/oem/usr/bin/ap_control stop");
       });
       // 分离线程，避免作用域问题
       reconnect_wifi_thread.detach();

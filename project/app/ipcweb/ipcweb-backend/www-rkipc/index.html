@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
 <link rel="stylesheet" href="assets/css/bootstrap.min.css" />
-
+<link rel="stylesheet" href="assets/css/select2.min.css" />
 <title>配置WiFi网络</title>
 <script src="assets/js/jQuery.min.js"></script>
+<script src="assets/js/select2.min.js"></script>
 <script>
 
      // 页面加载时调用
@@ -41,9 +42,10 @@
                 ssid_elem.innerHTML = ""
 
                 options.data.forEach(element => {
+		            console.log("element", element)
                     const option = document.createElement("option")
                     option.value = element["ssid"]
-                    option.innerText = `${element["ssid"]}   ---    (信号强度: ${element["signal_level"]})`
+		            option.innerHTML = `${element["ssid"]}&emsp;&emsp;(信号强度: ${element["signal_level"]})`
                     ssid_elem.appendChild(option)
                 });
             } else {
@@ -55,12 +57,37 @@
         xhr.send()
 
         var ssid_elem = document.getElementById('ssid')
+
+        // 初始化下拉框
+        $('#ssid').select2({
+            tags: true,
+            placeholder: "选中或手动输入您的无线路由器名称",
+            allowClear: true,
+            createTag: function (params) {
+                return {
+                    id: params.term,
+                    text: params.term,
+                    newOption: true
+                }
+            },
+            templateResult: function (data) {  // 接收用户手动输入并创建option
+                var $result = $("<span></span>");
+
+                $result.text(data.text);
+
+                if (data.newOption) {
+                    $result.append(" <em>(new)</em>");
+                }
+
+                return $result;
+            }
+        });
         
-        ssid_elem.innerHTML = [
-            '<option value="">',
-            '正在获取数据...',
-            '</option>'
-        ].join('')
+        // ssid_elem.innerHTML = [
+        //     '<option value="">',
+        //     '正在获取数据...',
+        //     '</option>'
+        // ].join('')
     }
 
     function connecting() {
@@ -75,7 +102,7 @@
         var form = document.getElementById('ssidForm')
         var formData = new FormData(form)
 
-        var jsonForm = {}
+	var jsonForm = {}
 
         formData.forEach((value, key) => {
             jsonForm[key] = value
@@ -94,7 +121,7 @@
         xhr.onload = function () {            
             if (xhr.status === 200) {
                 alert("配置WiFi成功!", 'success')
-                console.log("response: ", xhr.responseText)
+		console.log("response: ", xhr.responseText)
             } else {
                 alert("配置WiFi失败, 请检查异常原因或联系客服!", 'danger')
             }
@@ -102,10 +129,10 @@
             console.log('重置按钮状态')
             spinner.style.display = 'none';
             btn_text.innerText = '连接'
-            btn_connect.disabled = false
+            // btn_connect.disabled = false
         }
 
-        xhr.onerror = function () {
+	    xhr.onerror = function () {
             console.log("配网请求发送失败!")
         }
         
@@ -124,11 +151,11 @@
         <div class="form-group">
             <label for="ssid">选择无线网络: </label>
             <select type="text" id="ssid" name="ssid" class="form-control">
-                {% for result in scan_results %}
+                <!-- {% for result in scan_results %}
                 <option value="{{result[-1]}}">
                     {{result[-1]}}&emsp;&emsp;(信号强度: {{result[2]}})
                 </option>
-                {% endfor %}
+                {% endfor %} -->
             </select>
             <small id="help" class="form-text text-muted">提示: 选择信号强度大的无线路由器有助于提升使用体验。</small>
         </div>
